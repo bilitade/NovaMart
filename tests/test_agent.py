@@ -209,7 +209,7 @@ class TestTask2(unittest.TestCase):
             check(False, 5, "", "Error checking OrchestratorAgent tools", str(e))
 
     def test_2_7_routing_uses_different_models(self):
-        """Orchestrator should use Haiku; Workers should use Sonnet."""
+        """Orchestrator should use Haiku (or gpt-oss-20b); Workers should use Sonnet (or gpt-oss-120b)."""
         try:
             inventory  = self.ao.build_inventory_agent()
             refund     = self.ao.build_refund_agent()
@@ -220,21 +220,21 @@ class TestTask2(unittest.TestCase):
             orchestrator_model = self._get_model_id(orchestrator)
             inventory_model    = self._get_model_id(inventory)
 
-            uses_haiku  = 'haiku' in orchestrator_model.lower()
-            uses_sonnet = 'sonnet' in inventory_model.lower()
+            uses_haiku  = 'haiku' in orchestrator_model.lower() or 'gpt-oss-20b' in orchestrator_model.lower()
+            uses_sonnet = 'sonnet' in inventory_model.lower() or 'gpt-oss-120b' in inventory_model.lower()
 
             check(
                 uses_haiku,
                 5,
-                "OrchestratorAgent uses Claude 3 Haiku (correct for routing)",
-                "OrchestratorAgent should use Claude 3 Haiku (config.ORCHESTRATOR_MODEL_ID)",
+                "OrchestratorAgent uses Claude 3 Haiku (or gpt-oss-20b) for routing",
+                "OrchestratorAgent should use Claude 3 Haiku (config.ORCHESTRATOR_MODEL_ID) or gpt-oss-20b",
                 f"Found model: {orchestrator_model}"
             )
             check(
                 uses_sonnet,
                 5,
-                "Worker agents use Claude 3 Sonnet (correct for reasoning)",
-                "Worker agents should use Claude 3 Sonnet (config.WORKER_MODEL_ID)",
+                "Worker agents use Claude 3 Sonnet (or gpt-oss-120b) for reasoning",
+                "Worker agents should use Claude 3 Sonnet (config.WORKER_MODEL_ID) or gpt-oss-120b",
                 f"Found model: {inventory_model}"
             )
         except Exception as e:

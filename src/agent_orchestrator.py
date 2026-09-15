@@ -52,6 +52,7 @@ from boto3.dynamodb.conditions import Key
 
 import config
 from bedrock_kb_retrieval import retrieve_from_knowledge_base, format_kb_results
+from agent_observability import apply_observability_config
 
 # Configure logging for debugging
 logging.basicConfig(
@@ -1326,50 +1327,35 @@ def configure_observability(runtime_arn: str) -> None:
     - Agent logs → CloudWatch Logs at INFO level
     - Execution traces → AWS X-Ray at 100% sampling
     """
-    runtime_id = runtime_arn.split('/')[-1]
-
     # TODO: Configure observability
-    # NOTE: AgentCore API — control plane logging.
-    # put_agent_runtime_logging_configuration may not be available in all
-    # SDK versions — wrap the call in try/except and fall back gracefully.
-    # Use agentcore_control.put_agent_runtime_logging_configuration() with:
-    #   - agentRuntimeId (runtime_id)
-    #   - loggingConfiguration containing:
-    #     - cloudWatchConfig (logGroupName: config.AGENT_LOG_GROUP, logLevel: INFO, enabled: True)
-    #     - xRayConfig (enabled: True, samplingRate: 1.0)
-    # On success: print the CloudWatch log group and X-Ray sampling rate.
-    # On exception: print "[Note] Logging config skipped (SDK version mismatch): <e>"
-    try:
-        agentcore_control.put_agent_runtime_logging_configuration(
-            agentRuntimeId=runtime_id,
-            loggingConfiguration={
-                'cloudWatchConfig': {
-                    'logGroupName': config.AGENT_LOG_GROUP,
-                    'logLevel':     'INFO',
-                    'enabled':      True,
-                },
-                'xRayConfig': {
-                    'enabled':      True,
-                    'samplingRate': 1.0,
-                },
-            },
-        )
-        print(f"  CloudWatch log group: {config.AGENT_LOG_GROUP}")
-        print(f"  X-Ray sampling rate: 1.0 (100%)")
-    except Exception as e:
-        print(f"  [Note] Logging config skipped (SDK version mismatch): {e}")
+    # Build a loggingConfiguration dict and pass it to the pre-written
+    # apply_observability_config() with:
+    #   - cloudWatchConfig (logGroupName: config.AGENT_LOG_GROUP, logLevel: INFO, enabled: True)
+    #   - xRayConfig (enabled: True, samplingRate: 1.0)
+    # apply_observability_config() turns that into real AWS state: it enables
+    # CloudWatch Transaction Search at the sampling percentage chosen, creates
+    # the log group, and stores the settings as environment variables on the
+    # runtime so the deployed agent logs and traces exactly as configured.
+    # Wrap the call in try/except so a configuration error doesn't end the
+    # deployment without context.
+    logging_configuration = {
+        'cloudWatchConfig': {
+            'logGroupName': config.AGENT_LOG_GROUP,
+            'logLevel':     'INFO',
+            'enabled':      True,
+        },
+        'xRayConfig': {
+            'enabled':      True,
+            'samplingRate': 1.0,
+        },
+    }
 
-    # One-time account-level setup so X-Ray traces populate the Service Map
     try:
-        xray_client = boto3.client('xray', region_name=config.AWS_REGION)
-        xray_client.update_trace_segment_destination(Destination='CloudWatchLogs')
-        xray_client.update_indexing_rule(
-            Name='Default',
-            Rule={'Probabilistic': {'DesiredSamplingPercentage': 100.0}},
-        )
-        print(f"  CloudWatch Transaction Search enabled (100% sampling)")
+        summary = apply_observability_config(runtime_arn, logging_configuration)
+        print(f"  CloudWatch log group: {summary['log_group']}")
+        print(f"  X-Ray sampling rate: {logging_configuration['xRayConfig']['samplingRate']} (100%)")
     except Exception as e:
-        print(f"  [Note] Transaction Search setup skipped: {e}")
+        print(f"  [Note] Observability config failed: {e}")
 
 
 # ═══════════════════════════════════════════════════════
